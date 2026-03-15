@@ -1,27 +1,23 @@
-const mysql  = require('mysql2/promise');
-const env    = require('./env');
-const logger = require('./logger');
+const { Pool } = require('pg');
+const env     = require('./env');
+const logger  = require('./logger');
 
-const pool = mysql.createPool({
+const pool = new Pool({
   host:               env.db.host,
   port:               env.db.port,
   user:               env.db.user,
   password:           env.db.password,
   database:           env.db.name,
-  waitForConnections: true,
-  connectionLimit:    10,
-  queueLimit:         0,
-  timezone:           '+05:30',
-  dateStrings:        true,
+  ssl:                false,
+  connectionTimeoutMillis: 10000,
 });
 
-pool.getConnection()
-  .then(conn => {
-    logger.info(`✅ MySQL connected — ${env.db.name} @ ${env.db.host}`);
-    conn.release();
+pool.connect()
+  .then(() => {
+    logger.info(`✅ PostgreSQL connected — ${env.db.name} @ ${env.db.host}`);
   })
   .catch(err => {
-    logger.error(`❌ MySQL connection failed: ${err.message}`);
+    logger.error(`❌ PostgreSQL connection failed: ${err.message}`);
     process.exit(1);
   });
 
