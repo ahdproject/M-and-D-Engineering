@@ -1,31 +1,32 @@
-const logger      = require('../config/logger');
-const ApiResponse = require('../utils/apiResponse');
+// src/modules/auth/auth.validation.js
 
-const errorMiddleware = (err, req, res, next) => {
-  logger.error(`${req.method} ${req.originalUrl} — ${err.message}`, err);
+const Joi = require('joi');
 
-  // MySQL duplicate entry
-  if (err.code === 'ER_DUP_ENTRY') {
-    return ApiResponse.error(res, 'Record already exists', 409);
+const loginSchema = Joi.object({
+  email:    Joi.string().email().required().messages({
+    'string.email': 'Enter a valid email address',
+    'any.required': 'Email is required',
+  }),
+  password: Joi.string().min(6).required().messages({
+    'string.min':   'Password must be at least 6 characters',
+    'any.required': 'Password is required',
+  }),
+});
+
+const refreshSchema = Joi.object({
+  refresh_token: Joi.string().required(),
+});
+
+const validate = (schema) => (req, res, next) => {
+  const { error } = schema.validate(req.body, { abortEarly: false });
+  if (error) {
+    return res.status(422).json({
+      success: false,
+      message: 'Validation failed',
+      errors:  error.details.map(d => d.message),
+    });
   }
-
-  // MySQL foreign key constraint
-  if (err.code === 'ER_NO_REFERENCED_ROW_2') {
-    return ApiResponse.error(res, 'Referenced record not found', 422);
-  }
-
-  // Joi validation (if thrown manually)
-  if (err.isJoi) {
-    return ApiResponse.validationError(
-      res,
-      err.details.map(d => d.message)
-    );
-  }
-
-  const statusCode = err.statusCode || 500;
-  const message    = err.statusCode ? err.message : 'Internal server error';
-
-  return ApiResponse.error(res, message, statusCode);
+  next();
 };
 
-module.exports = { errorMiddleware };
+module.exports = { loginSchema, refreshSchema, validate };

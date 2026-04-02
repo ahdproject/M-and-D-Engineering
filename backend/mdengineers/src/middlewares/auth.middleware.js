@@ -5,20 +5,18 @@ const db                     = require('../config/db');
 const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return ApiResponse.unauthorized(res, 'No token provided');
     }
 
-    const token = authHeader.split(' ')[1];
+    const token   = authHeader.split(' ')[1];
     const decoded = verifyAccessToken(token);
 
-    // Verify user still exists and is active
-    const [rows] = await db.query(
+    const { rows } = await db.query(
       `SELECT u.id, u.name, u.email, u.is_active, r.name AS role
        FROM users u
        JOIN roles r ON u.role_id = r.id
-       WHERE u.id = ?`,
+       WHERE u.id = $1`,
       [decoded.id]
     );
 
