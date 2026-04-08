@@ -161,3 +161,56 @@ WHERE NOT EXISTS (
   SELECT 1 FROM chemical_rate_history WHERE chemical_id = c.id
 )
 ON CONFLICT DO NOTHING;
+
+-- ─── PAYROLL IMPORT TABLE ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS payroll_import (
+  id                        SERIAL PRIMARY KEY,
+  employee_id               INT REFERENCES employees(id) ON DELETE SET NULL,
+  employee_excel_id         VARCHAR(20),
+  employee_name             VARCHAR(100),
+  department                VARCHAR(100),
+  designation               VARCHAR(100),
+  full_day                  NUMERIC(5,2),
+  half_day                  NUMERIC(5,2),
+  off_days                  NUMERIC(5,2),
+  paid_leave                NUMERIC(5,2),
+  paid_days                 NUMERIC(5,2),
+  unpaid_days               NUMERIC(5,2),
+  daily_wage                NUMERIC(12,2),
+  gross_wages               NUMERIC(12,2),
+  earned_wages              NUMERIC(12,2),
+  other_earnings            NUMERIC(12,2),
+  overtime                  NUMERIC(12,2),
+  extras                    NUMERIC(12,2),
+  gross_earnings            NUMERIC(12,2),
+  statutory_compliance      NUMERIC(12,2),
+  penalties                 NUMERIC(12,2),
+  loan_advance              NUMERIC(12,2),
+  other_deductions          NUMERIC(12,2),
+  finalized_amount          NUMERIC(12,2),
+  basic_salary              NUMERIC(12,2),
+  dearness_allowance        NUMERIC(12,2),
+  house_rent_allowance      NUMERIC(12,2),
+  transportation_allowance  NUMERIC(12,2),
+  residual_pay              NUMERIC(12,2),
+  gross_income              NUMERIC(12,2),
+  total_other_earnings      NUMERIC(12,2),
+  provident_fund            NUMERIC(12,2),
+  esic_amount               NUMERIC(12,2),
+  professional_tax          NUMERIC(12,2),
+  labour_welfare_fund       NUMERIC(12,2),
+  total_statutory_compliance NUMERIC(12,2),
+  esic_deduction            NUMERIC(12,2),
+  total_deductions          NUMERIC(12,2),
+  bank_name                 VARCHAR(100),
+  ifsc_code                 VARCHAR(20),
+  bank_account_no           VARCHAR(30),
+  bank_branch_name          VARCHAR(100),
+  account_type              VARCHAR(30),
+  uploaded_by               INT REFERENCES users(id),
+  uploaded_at               TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payroll_import_employee ON payroll_import(employee_id);
+CREATE INDEX IF NOT EXISTS idx_payroll_import_uploaded_at ON payroll_import(uploaded_at);
+CREATE INDEX IF NOT EXISTS idx_payroll_import_excel_id ON payroll_import(employee_excel_id);

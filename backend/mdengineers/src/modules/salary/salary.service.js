@@ -1,7 +1,8 @@
 const db       = require('../../config/db');
 const loansSvc = require('../loans/loans.service');
+const XLSX     = require('xlsx');
 
-// ─── Core salary computation for one employee ────────────────────────────────
+// ─── Compute salary for one employee ──────────────────────────────────────────────
 const computeForEmployee = async (client, employeeId, month, year, computedBy) => {
 
   // 1. Get salary config
@@ -316,8 +317,158 @@ const getLoanRepaymentHistory = async (loanId) => {
   return rows;
 };
 
+// ─── Excel Column → DB field mapping ─────────────────────────────────────────
+const EXCEL_TO_DB = {
+  'Employee ID':                'employee_excel_id',
+  'Employee Name':              'employee_name',
+  'Department':                 'department',
+  'Designation':                'designation',
+  'Full Day':                   'full_day',
+  'Half Day':                   'half_day',
+  'Off Days':                   'off_days',
+  'Paid Leave':                 'paid_leave',
+  'Paid Days':                  'paid_days',
+  'Unpaid Days':                'unpaid_days',
+  'Daily Wage':                 'daily_wage',
+  'Gross Wages':                'gross_wages',
+  'Earned Wages':               'earned_wages',
+  'Other Earnings':             'other_earnings',
+  'Overtime':                   'overtime',
+  'Extras':                     'extras',
+  'Gross Earnings':             'gross_earnings',
+  'Statutory Compliance':       'statutory_compliance',
+  'Penalities':                 'penalties',
+  'Loan & Advance':             'loan_advance',
+  'Other Deductions':           'other_deductions',
+  'Finalized Amount':           'finalized_amount',
+  'Basic Salary':               'basic_salary',
+  'Dearness Allowance':         'dearness_allowance',
+  'House Rent Allowance':       'house_rent_allowance',
+  'Transportation Allowance':   'transportation_allowance',
+  'Residual Pay':               'residual_pay',
+  'Gross Income':               'gross_income',
+  'Total Other Earnings':       'total_other_earnings',
+  'Provident Fund':             'provident_fund',
+  'ESIC Amount':                'esic_amount',
+  'Professional Tax':           'professional_tax',
+  'Labour Welfare Fund':        'labour_welfare_fund',
+  'Total Statutory Compliance': 'total_statutory_compliance',
+  'Esic':                       'esic_deduction',
+  'Total Deductions':           'total_deductions',
+  'Bank Name':                  'bank_name',
+  'IFSC Code':                  'ifsc_code',
+  'Bank Account No':            'bank_account_no',
+  'Bank Branch Name':           'bank_branch_name',
+  'Account Type':               'account_type',
+};
+
+// ─── Import payroll data from uploaded Excel buffer ───────────────────────────
+const importFromExcel = async (buffer, uploadedBy) => {
+  const workbook  = XLSX.read(buffer, { type: 'buffer' });
+  const sheet     = workbook.Sheets[workbook.SheetNames[0]];
+  const rows      = XLSX.utils.sheet_to_json(sheet, { defval: null });
+
+  if (!rows.length) throw Object.assign(new Error('Excel file is empty'), { statusCode: 400 });
+
+  const client = await db.connect();
+  let imported = 0;
+  const errors = [];
+
+  try {
+    await client.query('BEGIN');
+
+    for (const row of rows) {
+      // Map excel columns to db fields
+      const mapped = {};
+      for (const [excelKey, dbKey] of Object.entries(EXCEL_TO_DB)) {
+        mapped[dbKey] = row[excelKey] ?? null;
+      }
+
+      // Try to match employee by name
+      const { rows: empRows } = await client.query(
+        `SELECT id FROM employees WHERE LOWER(name) = LOWER($1) AND is_active = true LIMIT 1`,
+        [mapped.employee_name]
+      );
+
+      const employee_id = empRows[0]?.id || null;
+
+      await client.query(
+        `INSERT INTO payroll_import (
+          employee_id, employee_excel_id, employee_name, department, designation,
+          full_day, half_day, off_days, paid_leave, paid_days, unpaid_days,
+          daily_wage, gross_wages, earned_wages, other_earnings, overtime, extras,
+          gross_earnings, statutory_compliance, penalties, loan_advance,
+          other_deductions, finalized_amount, basic_salary, dearness_allowance,
+          house_rent_allowance, transportation_allowance, residual_pay,
+          gross_income, total_other_earnings, provident_fund, esic_amount,
+          professional_tax, labour_welfare_fund, total_statutory_compliance,
+          esic_deduction, total_deductions, bank_name, ifsc_code,
+          bank_account_no, bank_branch_name, account_type, uploaded_by
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+          $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,
+          $33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43
+        )`,
+        [
+          employee_id, mapped.employee_excel_id, mapped.employee_name,
+          mapped.department, mapped.designation, mapped.full_day, mapped.half_day,
+          mapped.off_days, mapped.paid_leave, mapped.paid_days, mapped.unpaid_days,
+          mapped.daily_wage, mapped.gross_wages, mapped.earned_wages,
+          mapped.other_earnings, mapped.overtime, mapped.extras,
+          mapped.gross_earnings, mapped.statutory_compliance, mapped.penalties,
+          mapped.loan_advance, mapped.other_deductions, mapped.finalized_amount,
+          mapped.basic_salary, mapped.dearness_allowance, mapped.house_rent_allowance,
+          mapped.transportation_allowance, mapped.residual_pay, mapped.gross_income,
+          mapped.total_other_earnings, mapped.provident_fund, mapped.esic_amount,
+          mapped.professional_tax, mapped.labour_welfare_fund,
+          mapped.total_statutory_compliance, mapped.esic_deduction,
+          mapped.total_deductions, mapped.bank_name, mapped.ifsc_code,
+          mapped.bank_account_no, mapped.bank_branch_name, mapped.account_type,
+          uploadedBy,
+        ]
+      );
+      imported++;
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  return { imported, errors };
+};
+
+// ─── Get payroll imports history ──────────────────────────────────────────────
+const getPayrollImports = async (limit = 100, offset = 0) => {
+  const { rows } = await db.query(
+    `SELECT pi.*, u.name AS uploaded_by_name, e.name AS employee_name
+     FROM payroll_import pi
+     LEFT JOIN users u ON pi.uploaded_by = u.id
+     LEFT JOIN employees e ON pi.employee_id = e.id
+     ORDER BY pi.uploaded_at DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+
+  const { rows: countRows } = await db.query(
+    'SELECT COUNT(*) AS total FROM payroll_import'
+  );
+
+  return {
+    imports: rows,
+    total: parseInt(countRows[0].total),
+    limit,
+    offset,
+  };
+};
+
 module.exports = {
   computeMonthly, getMonthlyPayroll,
   getEmployeeSalary, markPaid,
   getLoanRepaymentHistory,
+  importFromExcel,
+  getPayrollImports,
 };

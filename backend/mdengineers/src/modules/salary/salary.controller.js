@@ -31,4 +31,17 @@ const getLoanRepayments = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, { repayments: data, total: data.length });
 });
 
-module.exports = { compute, getMonthlyPayroll, getEmployeeSalary, markPaid, getLoanRepayments };
+const getPayrollImports = asyncHandler(async (req, res) => {
+  const { limit = 100, offset = 0 } = req.query;
+  const data = await svc.getPayrollImports(parseInt(limit), parseInt(offset));
+  return ApiResponse.success(res, data);
+});
+
+// ─── NEW ─────────────────────────────────────────────────────────────────────
+const uploadPayroll = asyncHandler(async (req, res) => {
+  if (!req.file) return ApiResponse.error(res, 'No file uploaded', 400);
+  const data = await svc.importFromExcel(req.file.buffer, req.user.id);
+  return ApiResponse.created(res, data, `Imported ${data.imported} records from Excel`);
+});
+
+module.exports = { compute, getMonthlyPayroll, getEmployeeSalary, markPaid, getLoanRepayments, getPayrollImports, uploadPayroll };
