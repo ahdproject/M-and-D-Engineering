@@ -2,6 +2,9 @@ const app    = require('./app');
 const env    = require('./config/env');
 const logger = require('./config/logger');
 
+// Debug: Check DATABASE_URL
+console.log("DATABASE_URL:", process.env.DATABASE_URL);
+
 // Ensure DB connection on boot
 require('./config/db');
 
