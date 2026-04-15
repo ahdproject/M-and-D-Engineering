@@ -7,7 +7,7 @@ const { errorMiddleware } = require('./middlewares/error.middleware');
 const logger    = require('./config/logger');
 
 const app = express();
-
+// Thank You
 app.use(cors());
 
 app.use(express.json({ limit: '10mb' }));
